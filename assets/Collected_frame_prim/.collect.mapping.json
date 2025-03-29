@@ -1,0 +1,11 @@
+{
+    "version": "1.0",
+    "file_records": [
+        {
+            "source_url": "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/4.5/Isaac/Props/UIElements/frame_prim.usd",
+            "source_hash": "05924ba2e4b6cfde32d69499ab38b967c21d6041",
+            "target_url": "./frame_prim.usd",
+            "target_hash": "ef7a726a588e1b3d08c845571975aaa5e4175652"
+        }
+    ]
+}
