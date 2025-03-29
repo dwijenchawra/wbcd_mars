@@ -97,13 +97,18 @@ physxSceneAPI.CreateGpuFoundLostAggregatePairsCapacityAttr().Set(10 * 1024)
 left_joint_positions = np.array([0.0, -np.pi/4, np.pi/2, -np.pi/4, -np.pi/2, 0.0])
 right_joint_positions = np.array([0.0, -np.pi/4, np.pi/2, -np.pi/4, -np.pi/2, 0.0])
 
+# add seventh joint for gripper
+left_joint_positions = np.append(left_joint_positions, 0.0)
+right_joint_positions = np.append(right_joint_positions, 0.0)
+
+
 # Noise parameters
 noise_amplitude = 0.05  # Maximum noise in radians (about 3 degrees)
 
 # Create initial ArticulationAction for position control
 left_action = ArticulationActions(
     joint_names=None,
-    joint_indices=np.arange(6),
+    joint_indices=np.arange(7),
     joint_positions=left_joint_positions,
     joint_velocities=None,
     joint_efforts=None
@@ -111,7 +116,7 @@ left_action = ArticulationActions(
 
 right_action = ArticulationActions(
     joint_names=None,
-    joint_indices=np.arange(6),
+    joint_indices=np.arange(7),
     joint_positions=right_joint_positions,
     joint_velocities=None,
     joint_efforts=None
@@ -126,16 +131,21 @@ frame_marker_cfg = VisualizationMarkersCfg(
 )
 handpose_left = VisualizationMarkers(frame_marker_cfg.replace(prim_path="/Visuals/handpose_left"))
 
+##############
+# TODO:
+# - list all the joints possible, and see which one is the gripper (right now joint 7 is not working anything)
+############
 
 # Main simulation loop
 for i in range(1000):
     # Generate random noise for each joint
-    left_noise = np.random.uniform(-noise_amplitude, noise_amplitude, size=6)
-    right_noise = np.random.uniform(-noise_amplitude, noise_amplitude, size=6)
+    left_noise = np.random.uniform(-noise_amplitude, noise_amplitude, size=7)
+    right_noise = np.random.uniform(-noise_amplitude, noise_amplitude, size=7)
 
-    # # Apply noise to joint positions
-    # left_joint_positions += left_noise
-    # right_joint_positions += right_noise
+    # Apply noise to joint positions every 100 frames
+    if i % 100 == 0:
+        left_joint_positions += left_noise
+        right_joint_positions += right_noise
 
     # Update articulation actions
     left_action.joint_positions = left_joint_positions
