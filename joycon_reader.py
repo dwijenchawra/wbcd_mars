@@ -1,101 +1,3 @@
-# # from flask import Flask, request
-# # import json
-# # import time
-# # import threading
-# # import sys
-
-# # app = Flask(__name__)
-# # joycon_data = None  # Global variable to store received Joy-Con data
-# # lock = threading.Lock() # Protect joycon_data during concurrent access
-
-# # @app.route('/update', methods=['POST'])
-# # def update_joycon_data():
-# #     global joycon_data
-# #     with lock:
-# #         joycon_data = request.get_json()
-# #     return "Data received", 200
-
-# # def data_producer():
-# #     global joycon_data
-# #     while True:
-# #         with lock:
-# #             if joycon_data:
-# #                 # Extract relevant data
-# #                 data = {
-# #                     "accel": joycon_data.get('accel'),
-# #                     "gyro": joycon_data.get('gyro'),
-# #                     "buttons": joycon_data.get('buttons'),
-# #                     "analog-sticks": joycon_data.get('analog-sticks'),
-# #                     "battery": joycon_data.get('battery'),
-# #                     "accel1": joycon_data.get('accel1'),
-# #                     "gyro1": joycon_data.get('gyro1'),
-# #                     "buttons1": joycon_data.get('buttons1'),
-# #                     "analog-sticks1": joycon_data.get('analog-sticks1'),
-# #                     "battery1": joycon_data.get('battery1')
-# #                 }
-# #                 print(json.dumps(data)) # Print the data for consumption by Isaac Sim
-# #                 # flush
-# #                 sys.stdout.flush()
-# #                 # also print to stderr
-# #                 sys.stderr.write(json.dumps(data) + '\n')
-# #                 sys.stderr.flush()
-# #         time.sleep(0.03)  # Rate at which data is produced
-
-# # if __name__ == '__main__':
-# #     # Start the data production in a separate thread
-# #     producer_thread = threading.Thread(target=data_producer)
-# #     producer_thread.daemon = True # Exit if the main thread exits
-# #     producer_thread.start()
-
-# #     app.run(debug=False, host='0.0.0.0', port=5000) # Start Flask server
-
-# import asyncio
-# import json
-# import sys
-# import websockets
-
-# joycon_data = None  # Global variable to store received Joy-Con data
-# lock = asyncio.Lock()  # Protect joycon_data during concurrent access
-
-# async def update_joycon_data(websocket):
-#     global joycon_data
-#     async for message in websocket:
-#         data = json.loads(message)
-#         async with lock:
-#             joycon_data = data
-#         await websocket.send("Data received")
-
-# async def data_producer():
-#     global joycon_data
-#     while True:
-#         await asyncio.sleep(0.03)  # Rate at which data is produced
-#         async with lock:
-#             if joycon_data:
-#                 data = {
-#                     "accel": joycon_data.get('accel'),
-#                     "gyro": joycon_data.get('gyro'),
-#                     "buttons": joycon_data.get('buttons'),
-#                     "analog-sticks": joycon_data.get('analog-sticks'),
-#                     "battery": joycon_data.get('battery'),
-#                     "accel1": joycon_data.get('accel1'),
-#                     "gyro1": joycon_data.get('gyro1'),
-#                     "buttons1": joycon_data.get('buttons1'),
-#                     "analog-sticks1": joycon_data.get('analog-sticks1'),
-#                     "battery1": joycon_data.get('battery1')
-#                 }
-#                 print(json.dumps(data))  # Print the data for consumption by Isaac Sim
-#                 sys.stdout.flush()
-#     print("Data producer stopped")
-
-# async def main():
-#     server = await websockets.serve(update_joycon_data, "0.0.0.0", 5000)
-#     producer = asyncio.create_task(data_producer())
-#     await asyncio.gather(producer, server.wait_closed())
-
-# if __name__ == '__main__':
-#     asyncio.run(main())
-
-
 import socket
 import json
 import sys
@@ -104,63 +6,122 @@ import time
 
 # UDP configuration
 UDP_IP = "0.0.0.0"  # Listen on all available interfaces
-UDP_PORT = 5000     # Port to listen on
+UDP_PORT = 5100     # Port to listen on
 
 # Create UDP socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((UDP_IP, UDP_PORT))
 
 # Global variable to store received Joy-Con data
-joycon_data = None
+# Global variables to store the latest sensor data
+latest_data = {
+    'accel': [0, 0, 0],
+    'gyro': [0, 0, 0],
+    'accel1': [0, 0, 0],
+    'gyro1': [0, 0, 0]
+}
 lock = threading.Lock()  # Protect joycon_data during concurrent access
 
-def receive_data():
-    global joycon_data
-    print(f"UDP server listening on {UDP_IP}:{UDP_PORT}")
-    
+# UDP configuration
+UDP_IP = "0.0.0.0"
+UDP_PORT = 5000
+
+# Global variables
+display = None
+orientation_right = [0, 0, 0]  # roll, pitch, yaw for right Joy-Con
+orientation_left = [0, 0, 0]   # roll, pitch, yaw for left Joy-Con
+
+def data_fetcher():
+    """Thread that continuously fetches data from the UDP server"""
+    global latest_data, orientation_right, orientation_left
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind((UDP_IP, UDP_PORT))
+    # print(f"UDP server listening on {UDP_IP}:{UDP_PORT}")
+
     while True:
-        # Receive data from socket
-        data, addr = sock.recvfrom(4096)  # Buffer size is 4096 bytes
-        
+        data, addr = sock.recvfrom(4096)
         try:
-            # Decode and parse JSON
-            json_data = json.loads(data.decode('utf-8'))
+            data = json.loads(data.decode('utf-8'))
             
-            # Store the data with thread safety
-            with lock:
-                joycon_data = json_data
+            # Update global variables
+            with threading.Lock():
+                # Right Joy-Con data
+                if 'accel' in data and isinstance(data['accel'], dict):
+                    latest_data['accel'] = [
+                        data['accel']['x'],
+                        data['accel']['y'],
+                        data['accel']['z']
+                    ]
                 
-        except json.JSONDecodeError:
-            print("Error: Received invalid JSON data")
+                if 'gyro' in data and isinstance(data['gyro'], dict):
+                    latest_data['gyro'] = [
+                        data['gyro']['x'],
+                        data['gyro']['y'],
+                        data['gyro']['z']
+                    ]
+                    # Use the default noise indicator to make a deadzone for the gyro data
+                    if abs(latest_data['gyro'][0]) > 75:
+                        orientation_right[0] = latest_data['gyro'][0] * 0.01  # Roll
+                    if abs(latest_data['gyro'][2]) > 75:
+                        orientation_right[1] = latest_data['gyro'][2] * 0.01  # Pitch
+                    if abs(latest_data['gyro'][1]) > 75:
+                        orientation_right[2] = latest_data['gyro'][1] * 0.01  # Yaw
+                    
+                
+                # Left Joy-Con data
+                if 'accel1' in data and isinstance(data['accel1'], dict):
+                    latest_data['accel1'] = [
+                        data['accel1']['x'],
+                        data['accel1']['y'],
+                        data['accel1']['z']
+                    ]
+                
+                if 'gyro1' in data and isinstance(data['gyro1'], dict):
+                    latest_data['gyro1'] = [
+                        data['gyro1']['x'],
+                        data['gyro1']['y'],
+                        data['gyro1']['z']
+                    ]
+                    # Use the default noise indicator to make a deadzone for the gyro data
+                    if abs(latest_data['gyro1'][0]) > 75:
+                        orientation_left[0] = latest_data['gyro1'][0] * 0.01  # Roll
+                    if abs(latest_data['gyro1'][2]) > 75:
+                        orientation_left[1] = latest_data['gyro1'][2] * 0.01  # Pitch
+                    if abs(latest_data['gyro1'][1]) > 75:
+                        orientation_left[2] = latest_data['gyro1'][1] * 0.01  # Yaw
+        except json.JSONDecodeError as e:
+            print(f"Error decoding JSON: {e}")
         except Exception as e:
-            print(f"Error processing received data: {str(e)}")
+            print(f"Error processing data: {e}")
+
 
 def data_producer():
-    global joycon_data
+    global latest_data
     while True:
         with lock:
-            if joycon_data:
+            if latest_data:
                 # Extract relevant data
+                # data = {
+                #     "accel": latest_data['accel'],
+                #     "gyro": latest_data['gyro'],
+                #     "accel1": latest_data['accel1'],
+                #     "gyro1": latest_data['gyro1']
+                # }
+                
                 data = {
-                    "accel": joycon_data.get('accel'),
-                    "gyro": joycon_data.get('gyro'),
-                    "buttons": joycon_data.get('buttons'),
-                    "analog-sticks": joycon_data.get('analog-sticks'),
-                    "battery": joycon_data.get('battery'),
-                    "accel1": joycon_data.get('accel1'),
-                    "gyro1": joycon_data.get('gyro1'),
-                    "buttons1": joycon_data.get('buttons1'),
-                    "analog-sticks1": joycon_data.get('analog-sticks1'),
-                    "battery1": joycon_data.get('battery1')
+                    "accel": latest_data['accel'],
+                    "gyro": orientation_right,
+                    "accel1": latest_data['accel1'],
+                    "gyro1": orientation_left
                 }
                 print(json.dumps(data))  # Print the data for consumption by Isaac Sim
-                # sys.stdout.flush()
+                sys.stdout.flush()
                 
         time.sleep(0.03)  # Rate at which data is produced
 
 if __name__ == '__main__':
     # Start the receiver thread
-    receiver_thread = threading.Thread(target=receive_data)
+    receiver_thread = threading.Thread(target=data_fetcher)
     receiver_thread.daemon = True  # Exit if the main thread exits
     receiver_thread.start()
     

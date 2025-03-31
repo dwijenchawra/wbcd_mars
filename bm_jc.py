@@ -109,6 +109,12 @@ previous_accel1 = None
 # Marker positions (initialize outside the loop)
 marker_position = np.array([0.0, 0.0, 0.0])  # Initial position
 marker_position1 = np.array([0.0, 0.0, 0.0])  # Initial position
+
+# Marker rotations (initialize outside the loop)
+marker_rotation = np.array([1.0, 0.0, 0.0, 0.0])  # Initial rotation
+marker_rotation1 = np.array([1.0, 0.0, 0.0, 0.0])  # Initial rotation
+
+# Marker translations (initialize outside the loop)
 translation = np.array([0.0, 0.0, 0.0])  # Initialize translation
 translation1 = np.array([0.0, 0.0, 0.0])  # Initialize translation
 
@@ -116,18 +122,23 @@ translation1 = np.array([0.0, 0.0, 0.0])  # Initialize translation
 joycon_script_path = "/home/dwijen/Documents/CODE/IsaacLab/wbcd/joycon_reader.py"  # Replace with the actual path
 joycon_process = subprocess.Popen(["python", joycon_script_path], stdout=subprocess.PIPE, stderr=sys.stderr, text=True)
 
+# format
+'''
+                data = {
+                    "accel": latest_data['accel'],
+                    "gyro": latest_data['gyro'],
+                    "accel1": latest_data['accel1'],
+                    "gyro1": latest_data['gyro1']
+                }
+'''
+
 jsonstorage = {
     "accel": None,
     "gyro": None,
-    "buttons": None,
-    "analog-sticks": None,
-    "battery": None,
     "accel1": None,
-    "gyro1": None,
-    "buttons1": None,
-    "analog-sticks1": None,
-    "battery1": None
+    "gyro1": None
 }
+
 jsonlock = threading.Lock()
 
 # Function to read data from the subprocess
@@ -143,7 +154,9 @@ def read_joycon_data(process):
                 data = json.loads(line)
                 with jsonlock:
                     jsonstorage.update(data)
+                    print(jsonstorage)
             except json.JSONDecodeError as e:
+                print("Failed to parse JSON: ", line)
                 print(f"Failed to parse JSON: {e}")
         except Exception as e:
             print(f"Error reading from subprocess: {e}")
@@ -152,18 +165,6 @@ def read_joycon_data(process):
 # launch thread to read from process
 thread = threading.Thread(target=read_joycon_data, args=(joycon_process,))
 thread.start()
-
-# Initialize variables to track previous sensor data
-previous_accel = None
-previous_accel1 = None
-previous_gyro = None
-previous_gyro1 = None
-
-# Initialize marker positions and orientations
-marker_position = np.array([0.0, 0.0, 0.0])
-marker_position1 = np.array([0.0, 0.0, 0.0])
-marker_rotation = np.array([1.0, 0.0, 0.0, 0.0])  # quaternion [w, x, y, z]
-marker_rotation1 = np.array([1.0, 0.0, 0.0, 0.0])
 
 # Helper function to convert gyro data to quaternion rotation delta
 def gyro_to_quaternion(gyro_data, dt=0.01):
@@ -210,7 +211,22 @@ def multiply_quaternions(q1, q2):
     
     return np.array([w, x, y, z])
 
+
 # Main simulation loop
+current_pos1 = np.array([0.0, 0.0, 0.0])  # Initial position for first Joy-Con
+current_pos2 = np.array([0.0, 1.0, 0.0])  # Initial position for second Joy-Con (offset to distinguish)
+current_quat1 = np.array([1.0, 0.0, 0.0, 0.0])  # Initial rotation (identity quaternion)
+current_quat2 = np.array([1.0, 0.0, 0.0, 0.0])  # Initial rotation (identity quaternion)
+
+# Constants for signal processing
+accel_scale = 0.0001  # Scale for acceleration (adjust as needed)
+accel_decay = 0.99    # Decay factor for velocity (simulates friction)
+dt = 0.01             # Time step (10ms)
+
+# Velocity vectors
+velocity1 = np.array([0.0, 0.0, 0.0])
+velocity2 = np.array([0.0, 0.0, 0.0])
+
 for i in range(2000):
     # Read Joy-Con data from the subprocess
     with jsonlock:
@@ -223,129 +239,77 @@ for i in range(2000):
         continue
     
     # Process first Joy-Con data
-    accel = None
-    gyro = None
-    
-    # Extract accel data for first Joy-Con
-    accel_data = joycon_data.get("accel")
-    if accel_data:
-        accel_x = accel_data.get("x", 0)
-        accel_y = accel_data.get("y", 0)
-        accel_z = accel_data.get("z", 0)
-        accel = np.array([accel_x, accel_y, accel_z])
-    else:
-        print("Accel data not found for first Joy-Con.")
-    
-    # Extract gyro data for first Joy-Con
-    gyro_data = joycon_data.get("gyro")
-    if gyro_data:
-        gyro_x = gyro_data.get("x", 0)
-        gyro_y = gyro_data.get("y", 0)
-        gyro_z = gyro_data.get("z", 0)
-        gyro = np.array([gyro_x, gyro_y, gyro_z])
-    else:
-        print("Gyro data not found for first Joy-Con.")
+    accel = joycon_data.get("accel")
+    gyro = joycon_data.get("gyro")
     
     # Process second Joy-Con data
-    accel1 = None
-    gyro1 = None
+    accel1 = joycon_data.get("accel1")
+    gyro1 = joycon_data.get("gyro1")
     
-    # Extract accel data for second Joy-Con
-    accel_data1 = joycon_data.get("accel1")
-    if accel_data1:
-        accel_x1 = accel_data1.get("x", 0)
-        accel_y1 = accel_data1.get("y", 0)
-        accel_z1 = accel_data1.get("z", 0)
-        accel1 = np.array([accel_x1, accel_y1, accel_z1])
-    else:
-        print("Accel data not found for second Joy-Con.")
+    # Debug print
+    if i % 100 == 0:  # Only print every 100 frames to reduce spam
+        print("joycon data: ", joycon_data)
     
-    # Extract gyro data for second Joy-Con
-    gyro_data1 = joycon_data.get("gyro1")
-    if gyro_data1:
-        gyro_x1 = gyro_data1.get("x", 0)
-        gyro_y1 = gyro_data1.get("y", 0)
-        gyro_z1 = gyro_data1.get("z", 0)
-        gyro1 = np.array([gyro_x1, gyro_y1, gyro_z1])
-    else:
-        print("Gyro data not found for second Joy-Con.")
+    # Convert to numpy arrays if data exists
+    accel = np.array(accel) if accel else np.array([0.0, 0.0, 0.0])
+    gyro = np.array(gyro) if gyro else np.array([0.0, 0.0, 0.0])
+    accel1 = np.array(accel1) if accel1 else np.array([0.0, 0.0, 0.0])
+    gyro1 = np.array(gyro1) if gyro1 else np.array([0.0, 0.0, 0.0])
     
-    # Update first marker position based on accelerometer data
-    if previous_accel is not None and accel is not None:
-        # Calculate acceleration delta
-        accel_delta = accel - previous_accel
-        
-        # Scale the delta to control marker movement speed
-        translation_delta = accel_delta * 0.0001  # Adjust the scaling factor as needed
-        marker_position += translation_delta
-    
-    # Update first marker rotation based on gyroscope data
-    if gyro is not None:
-        # Convert gyro data to quaternion rotation
-        rotation_delta = gyro_to_quaternion(gyro)
-        
-        # Apply rotation delta to current rotation
-        marker_rotation = multiply_quaternions(marker_rotation, rotation_delta)
+    # Update rotation for first Joy-Con using gyro data
+    if gyro is not None and np.any(gyro):
+        delta_quat1 = gyro_to_quaternion(gyro, dt)
+        current_quat1 = multiply_quaternions(current_quat1, delta_quat1)
         
         # Normalize quaternion to prevent drift
-        marker_rotation = marker_rotation / np.linalg.norm(marker_rotation)
+        current_quat1 = current_quat1 / np.linalg.norm(current_quat1)
     
-    # Update second marker position based on accelerometer data
-    if previous_accel1 is not None and accel1 is not None:
-        # Calculate acceleration delta
-        accel_delta1 = accel1 - previous_accel1
-        
-        # Scale the delta to control marker movement speed
-        translation_delta1 = accel_delta1 * 0.0001  # Adjust the scaling factor as needed
-        marker_position1 += translation_delta1
-    
-    # Update second marker rotation based on gyroscope data
-    if gyro1 is not None:
-        # Convert gyro data to quaternion rotation
-        rotation_delta1 = gyro_to_quaternion(gyro1)
-        
-        # Apply rotation delta to current rotation
-        marker_rotation1 = multiply_quaternions(marker_rotation1, rotation_delta1)
+    # Update rotation for second Joy-Con using gyro data
+    if gyro1 is not None and np.any(gyro1):
+        delta_quat2 = gyro_to_quaternion(gyro1, dt)
+        current_quat2 = multiply_quaternions(current_quat2, delta_quat2)
         
         # Normalize quaternion to prevent drift
-        marker_rotation1 = marker_rotation1 / np.linalg.norm(marker_rotation1)
+        current_quat2 = current_quat2 / np.linalg.norm(current_quat2)
     
-    # Visualize the first marker
-    if accel is not None:
-        # Create tensors for transformation
-        trans_tensor = torch.tensor(np.array([marker_position]))
-        quat_tensor = torch.tensor(np.array([marker_rotation]))
+    # Update position using accelerometer data for first Joy-Con
+    if accel is not None and np.any(accel):
+        # Apply rotation to accelerometer data to get world-space acceleration
+        # Note: This is a simplified version - full IMU processing would be more complex
+        world_accel1 = accel * accel_scale
         
-        # Visualize the hand plane marker
-        hand_plane_marker.visualize(trans_tensor, quat_tensor)
-    
-    # Visualize the second marker
-    if accel1 is not None:
-        # Create tensors for transformation
-        trans_tensor1 = torch.tensor(np.array([marker_position1]))
-        quat_tensor1 = torch.tensor(np.array([marker_rotation1]))
+        # Update velocity using acceleration
+        velocity1 = velocity1 * accel_decay + world_accel1 * dt
         
-        # Visualize the hand plane marker
-        hand_plane_marker1.visualize(trans_tensor1, quat_tensor1)
+        # Update position using velocity
+        current_pos1 = current_pos1 + velocity1 * dt
     
-    # Store current sensor data for the next iteration
-    previous_accel = accel
-    previous_accel1 = accel1
-    previous_gyro = gyro
-    previous_gyro1 = gyro1
+    # Update position using accelerometer data for second Joy-Con
+    if accel1 is not None and np.any(accel1):
+        world_accel2 = accel1 * accel_scale
+        velocity2 = velocity2 * accel_decay + world_accel2 * dt
+        current_pos2 = current_pos2 + velocity2 * dt
     
-    # Optional: Print transform information
-    if i % 50 == 0:  # Print every 50 frames to avoid spam
-        print(f"Frame {i}:")
-        print("Marker 1 - Position:", marker_position)
-        print("Marker 1 - Rotation:", marker_rotation)
-        if accel1 is not None:
-            print("Marker 2 - Position:", marker_position1)
-            print("Marker 2 - Rotation:", marker_rotation1)
+    # Convert to tensors for visualization
+    marker_position1 = current_pos1
+    marker_rotation1 = current_quat1
+    
+    marker_position2 = current_pos2
+    marker_rotation2 = current_quat2
+    
+    # Create tensors for visualization
+    trans_tensor1 = torch.tensor(np.array([marker_position1]))
+    quat_tensor1 = torch.tensor(np.array([marker_rotation1]))
+    
+    trans_tensor2 = torch.tensor(np.array([marker_position2]))
+    quat_tensor2 = torch.tensor(np.array([marker_rotation2]))
+    
+    # Visualize the hand plane markers
+    hand_plane_marker.visualize(trans_tensor1, quat_tensor1)
+    hand_plane_marker1.visualize(trans_tensor2, quat_tensor2)
     
     # Step the simulation
     world.step()
-
 
 # Clean up: Terminate the subprocess when the simulation ends
 joycon_process.terminate()
