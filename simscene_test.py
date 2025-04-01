@@ -61,10 +61,12 @@ from isaaclab.utils.math import (
 )
 
 
-global_stiffness = [15.0, 25.0, 5.0, 0.0, 0.0, 0.0]
-global_damping = [10.0, 10.0, 1.0, 0.0, 0.0, 0.0]
+# global_stiffness = [5.0, 5.0, 5.0, 25.0, 25.0, 25.0]
+# global_damping = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+global_stiffness = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+global_damping = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 velocity_limit = [2.175, 2.175, 2.175, 2.175, 2.175, 2.175]
-effort_limit = [400.0, 400.0, 400.0, 400.0, 400.0, 400.0]
+effort_limit = [200.0, 200.0, 200.0, 200.0, 200.0, 200.0]
 
 
 @configclass
@@ -73,7 +75,7 @@ class BimanualManipulationCfg(InteractiveSceneCfg):
     # world
     world = AssetBaseCfg(
         prim_path="/World/bm_setup",
-        spawn=sim_utils.UsdFileCfg(usd_path="/home/dwijen/Documents/CODE/IsaacLab/wbcd/bim_nogripper.usd")
+        spawn=sim_utils.UsdFileCfg(usd_path="/home/dwijen/Documents/CODE/IsaacLab/wbcd/nogravity.usd")
     )
 
     arm_left = ArticulationCfg(
@@ -337,7 +339,7 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
         impedance_mode="variable_kp",
         inertial_dynamics_decoupling=True,
         partial_inertial_dynamics_decoupling=False,
-        gravity_compensation=True,
+        gravity_compensation=False,
         motion_damping_ratio_task=1.0,
         motion_control_axes_task=[1, 1, 1, 1, 1, 1],  # Control all axes
         nullspace_control="none",
@@ -482,8 +484,6 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
                 current_joint_vel=joint_vel,
                 nullspace_joint_pos_target=joint_centers,
             )
-            # scale down efforts by 0.1
-            joint_efforts *= 0.1
 
             print("Joint Efforts: ", end="")
             for effort in joint_efforts[0]:
