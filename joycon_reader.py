@@ -6,11 +6,11 @@ import time
 
 # UDP configuration
 UDP_IP = "0.0.0.0"  # Listen on all available interfaces
-UDP_PORT = 5100     # Port to listen on
+UDP_PORT = 5000     # Port to listen on
 
-# Create UDP socket
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.bind((UDP_IP, UDP_PORT))
+# # Create UDP socket
+# sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+# sock.bind((UDP_IP, UDP_PORT))
 
 # Global variable to store received Joy-Con data
 # Global variables to store the latest sensor data
@@ -22,14 +22,13 @@ latest_data = {
 }
 lock = threading.Lock()  # Protect joycon_data during concurrent access
 
-# UDP configuration
-UDP_IP = "0.0.0.0"
-UDP_PORT = 5000
-
 # Global variables
 display = None
 orientation_right = [0, 0, 0]  # roll, pitch, yaw for right Joy-Con
 orientation_left = [0, 0, 0]   # roll, pitch, yaw for left Joy-Con
+
+scaling_factor = 0.3  # Scaling factor for gyro data
+deadzone = 200 
 
 def data_fetcher():
     """Thread that continuously fetches data from the UDP server"""
@@ -60,12 +59,18 @@ def data_fetcher():
                         data['gyro']['z']
                     ]
                     # Use the default noise indicator to make a deadzone for the gyro data
-                    if abs(latest_data['gyro'][0]) > 75:
-                        orientation_right[0] = latest_data['gyro'][0] * 0.01  # Roll
-                    if abs(latest_data['gyro'][2]) > 75:
-                        orientation_right[1] = latest_data['gyro'][2] * 0.01  # Pitch
-                    if abs(latest_data['gyro'][1]) > 75:
-                        orientation_right[2] = latest_data['gyro'][1] * 0.01  # Yaw
+                    if abs(latest_data['gyro'][0]) > deadzone:
+                        orientation_right[0] = latest_data['gyro'][0] * scaling_factor  # Roll
+                    if abs(latest_data['gyro'][1]) > deadzone:
+                        orientation_right[1] = latest_data['gyro'][1] * scaling_factor  # Pitch
+                    if abs(latest_data['gyro'][2]) > deadzone:
+                        orientation_right[2] = latest_data['gyro'][2] * scaling_factor  # Yaw
+                    if abs(latest_data['gyro'][0]) < deadzone:
+                        orientation_right[0] = 0
+                    if abs(latest_data['gyro'][1]) < deadzone:
+                        orientation_right[1] = 0
+                    if abs(latest_data['gyro'][2]) < deadzone:
+                        orientation_right[2] = 0
                     
                 
                 # Left Joy-Con data
@@ -82,13 +87,28 @@ def data_fetcher():
                         data['gyro1']['y'],
                         data['gyro1']['z']
                     ]
+
                     # Use the default noise indicator to make a deadzone for the gyro data
-                    if abs(latest_data['gyro1'][0]) > 75:
-                        orientation_left[0] = latest_data['gyro1'][0] * 0.01  # Roll
-                    if abs(latest_data['gyro1'][2]) > 75:
-                        orientation_left[1] = latest_data['gyro1'][2] * 0.01  # Pitch
-                    if abs(latest_data['gyro1'][1]) > 75:
-                        orientation_left[2] = latest_data['gyro1'][1] * 0.01  # Yaw
+                    if abs(latest_data['gyro1'][0]) > deadzone:
+                        orientation_left[0] = latest_data['gyro1'][0] * scaling_factor
+                    if abs(latest_data['gyro1'][1]) > deadzone:
+                        orientation_left[1] = latest_data['gyro1'][1] * scaling_factor
+                    if abs(latest_data['gyro1'][2]) > deadzone:
+                        orientation_left[2] = latest_data['gyro1'][2] * scaling_factor
+                        
+                    if abs(latest_data['gyro1'][0]) < deadzone:
+                        orientation_left[0] = 0
+                    if abs(latest_data['gyro1'][1]) < deadzone:
+                        orientation_left[1] = 0
+                    if abs(latest_data['gyro1'][2]) < deadzone:
+                        orientation_left[2] = 0
+                        
+                        
+                    # negate y and z gyro for both
+                    orientation_right[1] = -orientation_right[1]
+                    orientation_right[2] = -orientation_right[2]
+                    # orientation_left[1] = -orientation_left[1]
+                    # orientation_left[2] = -orientation_left[2]
         except json.JSONDecodeError as e:
             print(f"Error decoding JSON: {e}")
         except Exception as e:
@@ -137,3 +157,4 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         print("Shutting down")
         sys.exit(0)
+

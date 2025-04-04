@@ -77,14 +77,48 @@ class BimanualTeleopInterface:
         """Update position of second controller by adding delta"""
         self.right_position = self.right_position + np.array(delta_position)
     
-    def update_left_rotation(self, delta_rotation):
-        """Update rotation of first controller by multiplying current quaternion with delta"""
-        self.left_rotation = self.multiply_quaternions(self.left_rotation, np.array(delta_rotation))
-        self.left_rotation = self.left_rotation / np.linalg.norm(self.left_rotation)  # Normalize quaternion
-    
-    def update_right_rotation(self, delta_rotation):
-        """Update rotation of second controller by multiplying current quaternion with delta"""
-        self.right_rotation = self.multiply_quaternions(self.right_rotation, np.array(delta_rotation))
+    def slerp(self, q1, q2, t):
+        """Spherical Linear Interpolation (SLERP) between two quaternions"""
+        q1 = q1 / np.linalg.norm(q1)
+        q2 = q2 / np.linalg.norm(q2)
+        
+        dot = np.dot(q1, q2)
+        
+        # If the dot product is negative, slerp won't take the shorter path.
+        # Fix by reversing one quaternion.
+        if dot < 0.0:
+            q2 = -q2
+            dot = -dot
+        
+        # Clamp dot product to avoid numerical errors
+        dot = np.clip(dot, -1.0, 1.0)
+        
+        # Calculate the angle between the quaternions
+        theta_0 = np.arccos(dot)
+        sin_theta_0 = np.sin(theta_0)
+        
+        if sin_theta_0 < 1e-6:
+            # If the angle is very small, use linear interpolation
+            return (1.0 - t) * q1 + t * q2
+        
+        # Perform SLERP
+        theta = theta_0 * t
+        sin_theta = np.sin(theta)
+        
+        s1 = np.sin(theta_0 - theta) / sin_theta_0
+        s2 = sin_theta / sin_theta_0
+        
+        return s1 * q1 + s2 * q2
+
+    def update_left_rotation(self, delta_rotation, slerp_factor=1.0):
+        target_rotation = self.multiply_quaternions(np.array(delta_rotation), self.left_rotation)  # Apply in world frame
+        self.left_rotation = self.slerp(self.left_rotation, target_rotation, slerp_factor)
+        self.left_rotation = self.left_rotation / np.linalg.norm(self.left_rotation)  # Normalize
+
+    def update_right_rotation(self, delta_rotation, slerp_factor=1.0):
+        """Update rotation of second controller using SLERP with delta quaternion"""
+        target_rotation = self.multiply_quaternions(np.array(delta_rotation), self.right_rotation)
+        self.right_rotation = self.slerp(self.right_rotation, target_rotation, slerp_factor)
         self.right_rotation = self.right_rotation / np.linalg.norm(self.right_rotation)  # Normalize quaternion
 
     @staticmethod
@@ -156,37 +190,24 @@ class JoyconInterface(BimanualTeleopInterface):
                 break
 
     def gyro_to_quaternion(self, gyro_data):
-        """Convert gyro data to quaternion rotation delta"""
-        # Scale gyro data
-        scale = 0.01
-        
-        # Extract gyro values
-        gyro_x = gyro_data[0] * scale
-        gyro_y = gyro_data[1] * scale
-        gyro_z = gyro_data[2] * scale
-        
-        # Calculate rotation angle (magnitude)
-        angle = np.sqrt(gyro_x**2 + gyro_y**2 + gyro_z**2) * self.dt
-        
-        # Handle zero rotation case
-        if angle < 1e-10:
-            return np.array([1.0, 0.0, 0.0, 0.0])
-        
-        # Normalize rotation axis
-        axis_x = gyro_x / angle
-        axis_y = gyro_y / angle
-        axis_z = gyro_z / angle
-        
-        # Create quaternion [w, x, y, z]
-        half_angle = angle / 2.0
+        """Convert gyro data to quaternion rotation delta in world frame"""
+        scale = 0.01  # Scaling factor
+        gyro_vec = np.array(gyro_data) * scale
+        gyro_mag = np.linalg.norm(gyro_vec)
+
+        if gyro_mag < 1e-10:
+            return np.array([1.0, 0.0, 0.0, 0.0])  # Identity quaternion (no rotation)
+
+        axis = gyro_vec / gyro_mag  # Normalize gyro vector
+        half_angle = (gyro_mag * self.dt) / 2.0
         sin_half_angle = np.sin(half_angle)
-        
-        qw = np.cos(half_angle)
-        qx = axis_x * sin_half_angle
-        qy = axis_y * sin_half_angle
-        qz = axis_z * sin_half_angle
-        
-        return np.array([qw, qx, qy, qz])
+
+        return np.array([
+            np.cos(half_angle),
+            axis[0] * sin_half_angle,
+            axis[1] * sin_half_angle,
+            axis[2] * sin_half_angle
+        ])
 
     def update(self, joycon_data):
         """Update position and rotation based on Joy-Con data"""        
@@ -266,3 +287,4 @@ if __name__ == "__main__":
     finally:
         if 'joycon_interface' in locals():
             joycon_interface.close()
+            
