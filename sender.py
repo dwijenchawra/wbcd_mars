@@ -47,5 +47,24 @@ while True:
     data = {**status, **{'accel1': status1['accel'], 'gyro1': status1['gyro'], 'buttons1': status1['buttons'], 'analog-sticks1': status1['analog-sticks'], 'battery1': status1['battery']}}
     message = json.dumps(data).encode('utf-8')
     print(message)
-    sock.sendto(message, ("127.0.0.1", 5000))  # Change IP to your target
+    sock.sendto(message, ("100.119.136.161", 5000))  # Change IP to your target
+    time.sleep(0.03)
+
+
+import socket
+import json
+import time
+from pyjoycon import GyroTrackingJoyCon, get_R_id, get_L_id
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+joycon_r = GyroTrackingJoyCon(*get_R_id())
+joycon_l = GyroTrackingJoyCon(*get_L_id())
+joycon_r.calibrate(seconds=5)
+joycon_l.calibrate(seconds=5)
+while True:
+    status = joycon_r.get_status()
+    status1 = joycon_l.get_status()
+    data = {**status, **{'accel1': status1['accel'], 'gyro1': status1['gyro'], 'buttons1': status1['buttons'], 'analog-sticks1': status1['analog-sticks'], 'battery1': status1['battery']}}
+    message = json.dumps(data).encode('utf-8')
+    print(message)
+    sock.sendto(message, ("0.0.0.0", 5000))  # Change IP to your target
     time.sleep(0.03)
