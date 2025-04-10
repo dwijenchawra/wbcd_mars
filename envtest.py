@@ -66,7 +66,7 @@ class BimanualManipulationCfg(InteractiveSceneCfg):
     )
 
     arm_left = ArticulationCfg(
-        prim_path="/World/bm_setup/arm_left/arm",
+        prim_path="/World/bm_setup/left/left_arm",
         init_state=ArticulationCfg.InitialStateCfg(
             joint_pos={
                 "shoulder_pan_joint": 0.0,
@@ -133,7 +133,7 @@ class BimanualManipulationCfg(InteractiveSceneCfg):
     )
 
     arm_right = ArticulationCfg(
-        prim_path="/World/bm_setup/arm_right/arm",
+        prim_path="/World/bm_setup/right/right_arm",
         init_state=ArticulationCfg.InitialStateCfg(
             joint_pos={
                 "shoulder_pan_joint": 0.0,
@@ -250,7 +250,7 @@ def setup_robot_entities(scene: InteractiveScene):
     # Set up cameras
     camera_left = TiledCamera(
         TiledCameraCfg(
-            prim_path="/World/bm_setup/arm_left/arm/ur10e/tool0/left_cam",
+            prim_path="/World/bm_setup/left/left_arm/ur10e/tool0/camera",
             width=1280,
             height=720,
             spawn=None
@@ -258,7 +258,7 @@ def setup_robot_entities(scene: InteractiveScene):
     )
     camera_right = TiledCamera(
         TiledCameraCfg(
-            prim_path="/World/bm_setup/arm_right/arm/ur10e/tool0/right_cam",
+            prim_path="/World/bm_setup/right/right_arm/ur10e/tool0/camera",
             width=1280,
             height=720,
             spawn=None
@@ -311,10 +311,10 @@ def get_joycon_commands(joycons: JoyconInterface, device: str):
 
     # TODO: Replace placeholder logic with actual Joycon -> Target Pose mapping
     # Using fixed target for demonstration
-    left_pos = torch.tensor([0.5, 0.0, 0.5], device=device).unsqueeze(0)  # Add batch dim
-    left_rot = torch.tensor([0.0, 0.0, 0.0, 1.0], device=device).unsqueeze(0) # Add batch dim, ensure valid quat
-    right_pos = torch.tensor([0.5, 0.0, 0.5], device=device).unsqueeze(0) # Add batch dim
-    right_rot = torch.tensor([0.0, 0.0, 0.0, 1.0], device=device).unsqueeze(0) # Add batch dim, ensure valid quat
+    left_pos_np = torch.tensor([0.5, 0.0, 0.5], device=device).unsqueeze(0)  # Add batch dim
+    left_rot_np = torch.tensor([0.0, 0.0, 0.0, 1.0], device=device).unsqueeze(0) # Add batch dim, ensure valid quat
+    right_pos_np = torch.tensor([0.5, 0.0, 0.5], device=device).unsqueeze(0) # Add batch dim
+    right_rot_np = torch.tensor([0.0, 0.0, 0.0, 1.0], device=device).unsqueeze(0) # Add batch dim, ensure valid quat
 
     # Example using actual Joycon data (needs scaling/mapping)
     # scale_pos = 0.1
@@ -322,6 +322,12 @@ def get_joycon_commands(joycons: JoyconInterface, device: str):
     # left_rot = torch.tensor(left_rot_np, device=device, dtype=torch.float).unsqueeze(0) # Assuming joycon gives w,x,y,z
     # right_pos = torch.tensor(right_pos_np * scale_pos, device=device, dtype=torch.float).unsqueeze(0)
     # right_rot = torch.tensor(right_rot_np, device=device, dtype=torch.float).unsqueeze(0) # Assuming joycon gives w,x,y,z
+    
+    left_pos = torch.tensor(left_pos_np, device=device)
+    left_rot = torch.tensor(left_rot_np, device=device)
+    right_pos = torch.tensor(right_pos_np, device=device)
+    right_rot = torch.tensor(right_rot_np, device=device)
+
 
     return left_pos, left_rot, right_pos, right_rot
 
@@ -398,7 +404,7 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
 
     # Initialization
     controllers, markers = initialize_controllers_and_markers(scene, sim)
-    entities, jacobi_indices, cameras = setup_robot_entities(scene)
+    entities, jacobi_indices = setup_robot_entities(scene)
     joycons = JoyconInterface()
 
     # Create buffers
@@ -469,7 +475,7 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
         )
         
         # get camera images
-        image_left = cameras["left"].data.output
+        # image_left = cameras["left"].data.output
 
         # Increment counter
         count += 1
